@@ -1,0 +1,1 @@
+/usr/bin/c++ CMakeFiles/main.dir/main.cpp.o CMakeFiles/main.dir/cu_sparse.cpp.o CMakeFiles/main.dir/aggregated_jacobi.cu.o -o main   -L/usr/lib/x86_64-linux-gnu/stubs  -L/usr/lib/gcc/x86_64-linux-gnu/12  /usr/lib/x86_64-linux-gnu/libcudart.so /usr/lib/x86_64-linux-gnu/libcusparse.so /usr/lib/x86_64-linux-gnu/libnvJitLink.so -lcudadevrt -lcudart_static -lrt -lpthread -ldl 

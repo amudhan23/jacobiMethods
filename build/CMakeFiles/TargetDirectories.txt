@@ -1,0 +1,3 @@
+/home/amd/gpu/cuSparseJacobi/build/CMakeFiles/main.dir
+/home/amd/gpu/cuSparseJacobi/build/CMakeFiles/edit_cache.dir
+/home/amd/gpu/cuSparseJacobi/build/CMakeFiles/rebuild_cache.dir
