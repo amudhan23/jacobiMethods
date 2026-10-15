@@ -19,7 +19,7 @@ find_package(CUDAToolkit REQUIRED)
 # GPU version
 # 
 
-add_executable(main main.cpp cu_sparse.cpp aggregated_jacobi.cu)
+add_executable(main main.cpp cu_sparse.cpp csr_matrix.cpp aggregated_jacobi.cu)
 target_link_libraries(main
     Eigen3::Eigen
     CUDA::cudart

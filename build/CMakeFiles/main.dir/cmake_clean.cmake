@@ -1,6 +1,8 @@
 file(REMOVE_RECURSE
   "CMakeFiles/main.dir/aggregated_jacobi.cu.o"
   "CMakeFiles/main.dir/aggregated_jacobi.cu.o.d"
+  "CMakeFiles/main.dir/csr_matrix.cpp.o"
+  "CMakeFiles/main.dir/csr_matrix.cpp.o.d"
   "CMakeFiles/main.dir/cu_sparse.cpp.o"
   "CMakeFiles/main.dir/cu_sparse.cpp.o.d"
   "CMakeFiles/main.dir/main.cpp.o"

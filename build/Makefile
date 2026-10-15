@@ -153,6 +153,30 @@ aggregated_jacobi.cu.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/main.dir/build.make CMakeFiles/main.dir/aggregated_jacobi.cu.s
 .PHONY : aggregated_jacobi.cu.s
 
+csr_matrix.o: csr_matrix.cpp.o
+.PHONY : csr_matrix.o
+
+# target to build an object file
+csr_matrix.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/main.dir/build.make CMakeFiles/main.dir/csr_matrix.cpp.o
+.PHONY : csr_matrix.cpp.o
+
+csr_matrix.i: csr_matrix.cpp.i
+.PHONY : csr_matrix.i
+
+# target to preprocess a source file
+csr_matrix.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/main.dir/build.make CMakeFiles/main.dir/csr_matrix.cpp.i
+.PHONY : csr_matrix.cpp.i
+
+csr_matrix.s: csr_matrix.cpp.s
+.PHONY : csr_matrix.s
+
+# target to generate assembly for a file
+csr_matrix.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/main.dir/build.make CMakeFiles/main.dir/csr_matrix.cpp.s
+.PHONY : csr_matrix.cpp.s
+
 cu_sparse.o: cu_sparse.cpp.o
 .PHONY : cu_sparse.o
 
@@ -213,6 +237,9 @@ help:
 	@echo "... aggregated_jacobi.o"
 	@echo "... aggregated_jacobi.i"
 	@echo "... aggregated_jacobi.s"
+	@echo "... csr_matrix.o"
+	@echo "... csr_matrix.i"
+	@echo "... csr_matrix.s"
 	@echo "... cu_sparse.o"
 	@echo "... cu_sparse.i"
 	@echo "... cu_sparse.s"

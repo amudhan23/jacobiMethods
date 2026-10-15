@@ -19,7 +19,8 @@ do { \
     } \
 } while(0)
 
-// --- Device Pointers (Global for solver state) ---
+// --- Device Pointers
+
 // R matrix (off-diagonal) - needed for residual check
 int *d_r_row_ptr = nullptr, *d_r_col_idx = nullptr;
 float *d_r_values = nullptr;
@@ -27,6 +28,7 @@ float *d_r_values = nullptr;
 float *d_diag = nullptr;
 // B vector (RHS)
 float *d_b = nullptr;
+
 // S^2 matrix (for polynomial solver)
 int *d_s2_row_ptr = nullptr, *d_s2_col_idx = nullptr;
 float *d_s2_values = nullptr;
@@ -40,10 +42,7 @@ int g_nnz_r = 0;
 int g_nnz_s2 = 0;
 
 
-// -----------------------------------------------------------------
-// KERNEL 1: Residual Kernel (Used for convergence check)
-// Computes residual as (R+D)*x - b
-// -----------------------------------------------------------------
+
 __global__ void compute_residual_kernel(
     const int* r_row_ptr,
     const int* r_col_idx,
@@ -73,6 +72,9 @@ __global__ void compute_residual_kernel(
         residual[i] = Ax_i - b[i];
     }
 }
+
+
+
 
 // -----------------------------------------------------------------
 // KERNEL 2: Aggregated (Polynomial) Jacobi (l=2)
@@ -125,12 +127,13 @@ void setup_gpu_solver(const Eigen::SparseMatrix<float, Eigen::RowMajor>& A,
         for (Eigen::SparseMatrix<float, Eigen::RowMajor>::InnerIterator it(A, k); it; ++it) {
             if (it.row() == it.col()) {
                 D_host(it.row()) = it.value();
-                D_inv_host(it.row()) = 1.0f / it.value();
             } else {
                 r_triplets.emplace_back(it.row(), it.col(), it.value());
             }
         }
     }
+
+    D_inv_host = D_host.cwiseInverse();
 
     Eigen::SparseMatrix<float, Eigen::RowMajor> R_host(g_n, g_n);
     R_host.setFromTriplets(r_triplets.begin(), r_triplets.end());
@@ -140,27 +143,37 @@ void setup_gpu_solver(const Eigen::SparseMatrix<float, Eigen::RowMajor>& A,
     std::cout << "R matrix non-zeros: " << g_nnz_r << "\n";
 
     // --- Compute S^2 ---
-    // This calls our cuSPARSE SpGEMM code in cu_sparse.cu
     g_nnz_s2 = S2_host.nonZeros();
 
-    // --- Compute D_term = (I - S) * (D^-1 * b) ---
-    // S = D^-1 * R
+    // D_term in the cpu
     // D_term = D^-1 * b - (D^-1 * R) * (D^-1 * b)
     printf("Computing polynomial D_term on CPU...\n");
     Eigen::VectorXf D_inv_b = D_inv_host.asDiagonal() * b_host; // c = D^-1 * b
+    
+
+
     Eigen::SparseMatrix<float, Eigen::RowMajor> S_host = R_host;
-    for (int k=0; k<S_host.outerSize(); ++k) {
-        for (Eigen::SparseMatrix<float, Eigen::RowMajor>::InnerIterator it(S_host,k); it; ++it) {
-            it.valueRef() *= D_inv_host(it.row()); // S_host is now S = D^-1 * R
+    S_host.makeCompressed(); 
+
+    float* values = S_host.valuePtr();
+    int* row_ptr  = S_host.outerIndexPtr();
+
+
+    for (int row = 0; row < S_host.rows(); ++row) {
+        int start = row_ptr[row];
+        int end   = row_ptr[row+1];
+
+        float scale = D_inv_host[row];
+
+        for (int i = start; i < end; ++i) {
+            values[i] *= scale;
         }
     }
-    // *** THIS IS THE FIX ***
-    // We compute c - S*c, which is (I - S)c
+ 
     Eigen::VectorXf D_term_host = D_inv_b - (S_host * D_inv_b);
     printf("D_term computed.\n\n");
 
-
-    // --- Allocate ALL GPU memory ---
+    // --- Allocate GPU memory ---
     CUDA_CHECK(cudaMalloc(&d_r_row_ptr, (g_n + 1) * sizeof(int)));
     CUDA_CHECK(cudaMalloc(&d_r_col_idx, g_nnz_r * sizeof(int)));
     CUDA_CHECK(cudaMalloc(&d_r_values, g_nnz_r * sizeof(float)));
@@ -189,9 +202,6 @@ void setup_gpu_solver(const Eigen::SparseMatrix<float, Eigen::RowMajor>& A,
     CUDA_CHECK(cudaMemcpy(d_d_term, D_term_host.data(), g_n * sizeof(float), cudaMemcpyHostToDevice));
 }
 
-// -----------------------------------------------------------------
-// cleanup_gpu_solver
-// -----------------------------------------------------------------
 void cleanup_gpu_solver() {
     std::cout << "\nCleaning up GPU solver memory...\n";
     cudaFree(d_r_row_ptr);
@@ -208,10 +218,7 @@ void cleanup_gpu_solver() {
     cudaFree(d_d_term);
 }
 
-// -----------------------------------------------------------------
-// SOLVER: gpu_aggregated_jacobi_solve (l=2)
-// Implements x_k = D_term + S^2 * x_k-2
-// -----------------------------------------------------------------
+
 void gpu_aggregated_jacobi_solve(const Eigen::VectorXf& D_host, // Pass host diagonal
                                     const Eigen::VectorXf& b_host, // Pass host RHS
                                     Eigen::VectorXf& x_host,       // Host output vector
@@ -246,10 +253,6 @@ void gpu_aggregated_jacobi_solve(const Eigen::VectorXf& D_host, // Pass host dia
     bool converged = false;
     int final_iter = 0;
     
-    // This is a two-step iteration (k depends on k-2).
-    // We will compute the even iterations (x_0 -> x_2, x_2 -> x_4, etc.)
-    // d_x_old will hold x_k-2
-    // d_x_new will hold x_k
     
     // l=2 loop computes 2 steps at a time, so max_iter/2
     for (int iter = 0; iter < max_iter; iter += 2) { // Note: iter starts at 0, increments by 2
@@ -311,29 +314,6 @@ void gpu_aggregated_jacobi_solve(const Eigen::VectorXf& D_host, // Pass host dia
 }
 
 
-// Create a diagonally dominant SPD matrix (Unchanged)
-Eigen::SparseMatrix<float, Eigen::RowMajor> create_diag_dominant_matrix(int n) {
-    std::vector<Eigen::Triplet<float>> triplets;
-    for (int i = 0; i < n; ++i) {
-        triplets.emplace_back(i, i, 10.0f + i * 0.1f);
-    }
-    for (int i = 0; i < n - 1; ++i) {
-        float val = -0.5f;
-        triplets.emplace_back(i, i+1, val);
-        triplets.emplace_back(i+1, i, val);
-    }
-    for (int i = 0; i < n - 2; ++i) {
-        float val = -0.2f;
-        triplets.emplace_back(i, i+2, val);
-        triplets.emplace_back(i+2, i, val);
-    }
-    Eigen::SparseMatrix<float, Eigen::RowMajor> A(n, n);
-    A.setFromTriplets(triplets.begin(), triplets.end());
-    A.makeCompressed();
-    return A;
-}
-
-
 Eigen::VectorXf solve_with_l2_jacobi(
     const Eigen::SparseMatrix<float, Eigen::RowMajor>& A,
     Eigen::SparseMatrix<float, Eigen::RowMajor> S2_host,
@@ -341,102 +321,19 @@ Eigen::VectorXf solve_with_l2_jacobi(
     int max_iter,
     float tol) 
 {
-    std::cout << "\n--- Running GPU Aggregated (Polynomial l=2) ---\n";
     
     Eigen::VectorXf x_solution(A.rows());
-    Eigen::VectorXf D_host; // Will be filled by setup
+    Eigen::VectorXf D_host;
 
     // 1. One-time setup
-    auto t_setup_start = std::chrono::high_resolution_clock::now();
-    // Setup now needs b_host to precompute D_term
     setup_gpu_solver(A, S2_host, b, D_host);
-    auto t_setup_end = std::chrono::high_resolution_clock::now();
-    auto setup_time = std::chrono::duration_cast<std::chrono::microseconds>(t_setup_end - t_setup_start).count();
-    std::cout << "GPU Setup Time: " << (float)setup_time / 1000.0f << " ms\n";
 
     // 2. Run the solver
-    auto t_gpu_large_start = std::chrono::high_resolution_clock::now();
     gpu_aggregated_jacobi_solve(D_host, b, x_solution, max_iter, tol);
-    auto t_gpu_large_end = std::chrono::high_resolution_clock::now();
-    auto gpu_solve_time = std::chrono::duration_cast<std::chrono::microseconds>(t_gpu_large_end - t_gpu_large_start).count();
-    std::cout << "GPU Solve Time: " << (float)gpu_solve_time / 1000.0f << " ms\n";
-
+    
     // 3. One-time cleanup
     cleanup_gpu_solver();
-    std::cout << "---------------------------\n";
-
-    // Print stats from within the wrapper
-    std::cout << "\n--- Solver Stats ---\n";
-    std::cout << "GPU Setup time (includes SpGEMM): " << (float)setup_time / 1000.0f << " ms\n";
-    std::cout << "GPU Solve time: " << (float)gpu_solve_time / 1000.0f << " ms\n";
-    std::cout << "Total GPU time: " << (float)(setup_time + gpu_solve_time) / 1000.0f << " ms\n\n";
+    
 
     return x_solution;
 }
-
-
-// -----------------------------------------------------------------
-// main() - Commented out because main.cpp has the main function
-// -----------------------------------------------------------------
-/*
-int main() {
-    std::cout << "Aggregated (Polynomial l=2) Jacobi Solver\n";
-    std::cout << "================================================\n\n";
-
-    // Check CUDA device
-    int deviceCount;
-    CUDA_CHECK(cudaGetDeviceCount(&deviceCount));
-    if (deviceCount == 0) {
-        std::cerr << "No CUDA devices found!\n";
-        return 1;
-    }
-    cudaDeviceProp prop;
-    CUDA_CHECK(cudaGetDeviceProperties(&prop, 0));
-    std::cout << "Using GPU: " << prop.name << "\n\n";
-
-    // --- Shared Parameters ---
-    int max_iter = 100;
-    float tol = 1e-6f;
-
-    // --- Large test ---
-    std::cout << "========================================\n";
-    std::cout << "Large Test (n=100000)\n";
-    std::cout << "========================================\n";
-
-    int n_large = 100000;
-    Eigen::SparseMatrix<float, Eigen::RowMajor> A_large = create_diag_dominant_matrix(n_large);
-    Eigen::VectorXf b_large = Eigen::VectorXf::Random(n_large);
-
-    std::cout << "Matrix size: " << n_large << "x" << n_large << "\n";
-    std::cout << "Non-zeros: " << A_large.nonZeros() << "\n\n";
-
-    // Compute S2 = A * A using cuSparseMultiply
-    Eigen::SparseMatrix<float, Eigen::RowMajor> S2_large = cuSparseMultiply(A_large);
-
-    // --- Run the new wrapper function ---
-    Eigen::VectorXf x_gpu_large = solve_with_l2_jacobi(A_large, S2_large, b_large, max_iter, tol);
-
-
-    // --- Verification & Displaying Solution ---
-    std::cout << "========================================\n";
-    std::cout << "Verification\n";
-    std::cout << "========================================\n";
-
-    // Set precision for printing vectors
-    std::cout << std::fixed << std::setprecision(6);
-
-    std::cout << "First 10 elements of x_gpu (Aggregated l=2):\n[";
-    for(int i = 0; i < 10; ++i) std::cout << x_gpu_large(i) << (i == 9 ? "" : ", ");
-    std::cout << " ... ]\n\n";
-
-    Eigen::VectorXf residual_gpu = A_large * x_gpu_large - b_large;
-
-    std::cout << "GPU (Aggregated l=2) final residual ||A*x - b||: " << residual_gpu.norm() << "\n";
-
-    if (residual_gpu.norm() < tol * 10) { // Give a little slack vs. internal check
-        std::cout << "\n✓ Solution converged!\n";
-    }
-
-    return 0;
-}
-*/

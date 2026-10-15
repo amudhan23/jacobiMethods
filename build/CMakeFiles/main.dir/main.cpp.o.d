@@ -380,5 +380,17 @@ CMakeFiles/main.dir/main.cpp.o: /home/amd/gpu/cuSparseJacobi/main.cpp \
  /usr/include/eigen3/Eigen/src/SparseCore/SparsePermutation.h \
  /usr/include/eigen3/Eigen/src/SparseCore/SparseFuzzy.h \
  /usr/include/eigen3/Eigen/src/SparseCore/SparseSolverBase.h \
+ /home/amd/gpu/cuSparseJacobi/csr_matrix.hpp /usr/include/cusparse.h \
+ /usr/include/cuComplex.h /usr/include/c++/13/math.h \
+ /usr/include/vector_types.h /usr/include/crt/host_defines.h \
+ /usr/include/cuda_runtime_api.h /usr/include/builtin_types.h \
+ /usr/include/device_types.h /usr/include/driver_types.h \
+ /usr/include/surface_types.h /usr/include/texture_types.h \
+ /usr/include/cuda_device_runtime_api.h /usr/include/library_types.h \
+ /usr/include/cuda_fp16.h /usr/include/cuda_fp16.hpp \
+ /usr/include/nv/target /usr/include/nv/detail/__target_macros \
+ /usr/include/nv/detail/__preprocessor /usr/include/c++/13/utility \
+ /usr/include/c++/13/bits/stl_relops.h \
  /home/amd/gpu/cuSparseJacobi/jacobiMethods.cuh \
- /usr/include/c++/13/iostream
+ /usr/include/c++/13/iostream \
+ /home/amd/gpu/cuSparseJacobi/sparse_matrix_interop.hpp
